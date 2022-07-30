@@ -11,6 +11,7 @@ contract LlamaPayBot {
     address public bot = 0xA43bC77e5362a81b3AB7acCD8B7812a981bdA478;
     address public llama = 0x7B3cCe19124aA3a4378768BF0EF6555709b51481;
     address public newLlama = 0x7B3cCe19124aA3a4378768BF0EF6555709b51481;
+    uint public fee = 30000; // Covers bot gas cost for calling function
 
     event WithdrawScheduled(address owner, address llamaPay, address from, address to, uint216 amountPerSec, uint40 starts, uint40 frequency, bytes32 id);
     event WithdrawCancelled(address owner, address llamaPay, address from, address to, uint216 amountPerSec, uint40 starts, uint40 frequency, bytes32 id);
@@ -70,7 +71,7 @@ contract LlamaPayBot {
                     emit ExecuteFailed(owner, call);
                 }
             }
-            uint gasUsed = (startGas - gasleft()) + 50000;
+            uint gasUsed = ((startGas - gasleft()) + 21000) + fee;
             uint totalSpent = gasUsed * tx.gasprice;
             balances[owner] -= totalSpent;
             (bool sent, ) = bot.call{value: totalSpent}("");
@@ -91,6 +92,11 @@ contract LlamaPayBot {
     function confirmNewLlama() external {
         require(msg.sender == newLlama, "not new llama");
         llama = newLlama;
+    }
+
+    function changeFee(uint _newFee) external {
+        require(msg.sender == llama, "not llama");
+        fee = _newFee;
     }
 
     function getWithdrawId(address _owner, address _llamaPay, address _from, address _to, uint216 _amountPerSec, uint40 _starts, uint40 _frequency) public pure returns (bytes32) {
