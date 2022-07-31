@@ -16,7 +16,7 @@ contract LlamaPayBot {
     event WithdrawScheduled(address owner, address llamaPay, address from, address to, uint216 amountPerSec, uint40 starts, uint40 frequency, bytes32 id);
     event WithdrawCancelled(address owner, address llamaPay, address from, address to, uint216 amountPerSec, uint40 starts, uint40 frequency, bytes32 id);
     event WithdrawExecuted(address owner, address llamaPay, address from, address to, uint216 amountPerSec, uint40 starts, uint40 frequency, bytes32 id);
-    event ExecuteFailed(address owner, bytes data);
+    event WithdrawFailed(address owner, bytes data);
     event OwnerWithdrawFailed(address _owner);
 
     mapping(address => uint) public balances;
@@ -63,7 +63,7 @@ contract LlamaPayBot {
             bytes calldata call = _calls[i];
             (bool success,) = address(this).delegatecall(call);
             if (!success) {
-                emit ExecuteFailed(_owner, call);
+                emit WithdrawFailed(_owner, call);
             }
         }
         uint gasUsed = ((startGas - gasleft()) + 21000) + fee;
