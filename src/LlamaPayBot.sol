@@ -17,6 +17,7 @@ contract LlamaPayBot {
     event WithdrawCancelled(address owner, address llamaPay, address from, address to, uint216 amountPerSec, uint40 starts, uint40 frequency, bytes32 id);
     event WithdrawExecuted(address owner, address llamaPay, address from, address to, uint216 amountPerSec, uint40 starts, uint40 frequency, bytes32 id);
     event ExecuteFailed(address owner, bytes data);
+    event OwnerWithdrawFailed(address _owner);
 
     mapping(address => uint) public balances;
     mapping(bytes32 => address) public owners;
@@ -54,28 +55,33 @@ contract LlamaPayBot {
         require(sent, "failed to send ether");
     }
 
-    function executeWithdrawals(bytes[][] calldata _calls, address[] calldata _owners) external {
+    function executeOwnerWithdrawal(bytes[] calldata _calls, address _owner) private {
+        uint i;
+        uint len = _calls.length;
+        uint startGas = gasleft();
+        for (i = 0; i < len; ++i) {
+            bytes calldata call = _calls[i];
+            (bool success,) = address(this).delegatecall(call);
+            if (!success) {
+                emit ExecuteFailed(_owner, call);
+            }
+        }
+        uint gasUsed = ((startGas - gasleft()) + 21000) + fee;
+        uint totalSpent = gasUsed * tx.gasprice;
+        balances[_owner] -= totalSpent;
+        (bool sent, ) = bot.call{value: totalSpent}("");
+        require(sent, "failed to send ether to bot");
+    }
+
+    function batchExecuteOwnerWithdrawals(bytes[] calldata _calls, address[] calldata _owners) external {
         require(msg.sender == bot, "not bot");
         uint i;
-        uint ownerLen = _owners.length;
-        for (i = 0; i < ownerLen; ++i) {
-            bytes[] calldata calls = _calls[i];
-            address owner = _owners[i];
-            uint j;
-            uint callLen = calls.length;
-            uint startGas = gasleft();
-            for (j = 0; j < callLen; ++j) {
-                bytes calldata call = calls[j];
-                (bool success,) = address(this).delegatecall(call);
-                if (!success) {
-                    emit ExecuteFailed(owner, call);
-                }
+        uint len = _owners.length;
+        for (i = 0; i < len; ++i) {
+            (bool success,) = address(this).delegatecall(_calls[i]);
+            if (!success) {
+                emit OwnerWithdrawFailed(_owners[i]);
             }
-            uint gasUsed = ((startGas - gasleft()) + 21000) + fee;
-            uint totalSpent = gasUsed * tx.gasprice;
-            balances[owner] -= totalSpent;
-            (bool sent, ) = bot.call{value: totalSpent}("");
-            require(sent, "failed to send ether to bot");
         }
     }
 
