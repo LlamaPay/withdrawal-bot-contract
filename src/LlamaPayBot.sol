@@ -59,7 +59,8 @@ contract LlamaPayBot {
         require(sent, "failed to send ether");
     }
 
-    function executeOwnerWithdrawal(bytes[] calldata _calls, address _owner) private {
+    function executeOwnerWithdrawal(bytes[] calldata _calls, address _owner) external {
+        require(msg.sender == bot, "not bot");
         uint i;
         uint len = _calls.length;
         uint startGas = gasleft();
