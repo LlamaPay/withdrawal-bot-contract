@@ -36,11 +36,15 @@ contract LlamaPayBot {
         emit WithdrawCancelled(msg.sender,_llamaPay, _from, _to, _amountPerSec, _starts, _frequency, id);
     }
 
-    function executeWithdraw(address _owner, address _llamaPay, address _from, address _to, uint216 _amountPerSec, uint40 _starts, uint40 _frequency) external {
+    function executeWithdraw(address _owner, address _llamaPay, address _from, address _to, uint216 _amountPerSec, uint40 _starts, uint40 _frequency, bool emitEvent) external {
         require(msg.sender == bot, "not bot");
         bytes32 id = getWithdrawId(_owner, _llamaPay, _from, _to, _amountPerSec, _starts, _frequency);
-        LlamaPay(_llamaPay).withdraw(_from, _to, _amountPerSec);
-        emit WithdrawExecuted(_owner, _llamaPay, _from, _to, _amountPerSec, _starts, _frequency, id);
+        if (_llamaPay != address(0) && _from != address(0) && _to != address(0) && _amountPerSec != 0) {
+            LlamaPay(_llamaPay).withdraw(_from, _to, _amountPerSec);
+        } 
+        if (emitEvent) {
+            emit WithdrawExecuted(_owner, _llamaPay, _from, _to, _amountPerSec, _starts, _frequency, id);
+        }
     }
 
     function deposit() external payable {
