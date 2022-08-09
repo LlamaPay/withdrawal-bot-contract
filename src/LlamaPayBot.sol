@@ -22,6 +22,7 @@ contract LlamaPayBot {
     uint256 public fee = 50000; // Covers bot gas cost for calling function
 
     event WithdrawScheduled(
+        address owner,
         address llamaPay,
         address from,
         address to,
@@ -40,6 +41,7 @@ contract LlamaPayBot {
         bytes32 id
     );
     event WithdrawCancelled(
+        address owner,
         address llamaPay,
         address from,
         address to,
@@ -77,7 +79,8 @@ contract LlamaPayBot {
     );
 
     mapping(address => uint256) public balances;
-    mapping(bytes32 => bool) public active;
+    mapping(bytes32 => bool) public activeRedirects;
+    mapping(bytes32 => address) public withdrawOwners;
 
     function deposit() external payable {
         require(msg.sender != bot, "bot cannot deposit");
@@ -93,6 +96,7 @@ contract LlamaPayBot {
 
     function scheduleWithdraw(
         address _llamaPay,
+        address _from,
         address _to,
         uint216 _amountPerSec,
         uint40 _starts,
@@ -100,17 +104,18 @@ contract LlamaPayBot {
     ) external {
         bytes32 id = calcWithdrawId(
             _llamaPay,
-            msg.sender,
+            _from,
             _to,
             _amountPerSec,
             _starts,
             _frequency
         );
-        require(!active[id], "already exists");
-        active[id] = !active[id];
+        require(withdrawOwners[id] == address(0), "already exists");
+        withdrawOwners[id] = msg.sender;
         emit WithdrawScheduled(
-            _llamaPay,
             msg.sender,
+            _llamaPay,
+            _from,
             _to,
             _amountPerSec,
             _starts,
@@ -134,8 +139,8 @@ contract LlamaPayBot {
             _starts,
             _frequency
         );
-        require(!active[id], "already exists");
-        active[id] = !active[id];
+        require(!activeRedirects[id], "already exists");
+        activeRedirects[id] = !activeRedirects[id];
         emit RedirectScheduled(
             msg.sender,
             _to,
@@ -149,6 +154,7 @@ contract LlamaPayBot {
 
     function cancelWithdraw(
         address _llamaPay,
+        address _from,
         address _to,
         uint216 _amountPerSec,
         uint40 _starts,
@@ -156,17 +162,18 @@ contract LlamaPayBot {
     ) external {
         bytes32 id = calcWithdrawId(
             _llamaPay,
-            msg.sender,
+            _from,
             _to,
             _amountPerSec,
             _starts,
             _frequency
         );
-        require(active[id], "doesn't exist");
-        active[id] = !active[id];
+        require(withdrawOwners[id] == msg.sender, "not owner");
+        withdrawOwners[id] = address(0);
         emit WithdrawCancelled(
-            _llamaPay,
             msg.sender,
+            _llamaPay,
+            _from,
             _to,
             _amountPerSec,
             _starts,
@@ -190,8 +197,8 @@ contract LlamaPayBot {
             _starts,
             _frequency
         );
-        require(active[id], "doesn't exist");
-        active[id] = !active[id];
+        require(activeRedirects[id], "doesn't exist");
+        activeRedirects[id] = !activeRedirects[id];
         emit RedirectCancelled(
             msg.sender,
             _to,
@@ -222,7 +229,6 @@ contract LlamaPayBot {
             _starts,
             _frequency
         );
-        require(active[id], "not active");
         if (_execute) {
             LlamaPay(_llamaPay).withdraw(_from, _to, _amountPerSec);
         }
@@ -256,7 +262,6 @@ contract LlamaPayBot {
             _starts,
             _frequency
         );
-        require(active[id], "not active");
         ERC20(_token).safeTransferFrom(_from, _to, _amount);
         emit RedirectExecuted(
             _from,
