@@ -28,7 +28,8 @@ interface LlamaPay {
 
 contract LlamaPayBot {
     using SafeTransferLib for ERC20;
-    address public bot = 0xA43bC77e5362a81b3AB7acCD8B7812a981bdA478;
+
+    address public bot = 0xFcfbA5Ac692BA1474263881A84271B432A25E443;
     address public llama = 0x7B3cCe19124aA3a4378768BF0EF6555709b51481;
     address public newLlama = 0x7B3cCe19124aA3a4378768BF0EF6555709b51481;
     uint256 public fee = 50000; // Covers bot gas cost for calling function
@@ -202,6 +203,50 @@ contract LlamaPayBot {
                 _id
             );
         }
+    }
+
+    function execute(bytes[] calldata _calls, address _from) external {
+        require(msg.sender == bot, "not bot");
+        uint256 i;
+        uint256 len = _calls.length;
+        uint256 startGas = gasleft();
+        for (i = 0; i < len; ++i) {
+            address(this).delegatecall(_calls[i]);
+        }
+        uint256 gasUsed = ((startGas - gasleft()) + 21000) + fee;
+        uint256 totalSpent = gasUsed * tx.gasprice;
+        balances[_from] -= totalSpent;
+        (bool sent, ) = bot.call{value: totalSpent}("");
+        require(sent, "failed to send ether to bot");
+    }
+
+    function batchExecute(bytes[] calldata _calls) external {
+        require(msg.sender == bot, "not bot");
+        uint256 i;
+        uint256 len = _calls.length;
+        for (i = 0; i < len; ++i) {
+            address(this).delegatecall(_calls[i]);
+        }
+    }
+
+    function changeBot(address _newBot) external {
+        require(msg.sender == llama, "not llama");
+        bot = _newBot;
+    }
+
+    function changeLlama(address _newLlama) external {
+        require(msg.sender == llama, "not llama");
+        newLlama = _newLlama;
+    }
+
+    function confirmNewLlama() external {
+        require(msg.sender == newLlama, "not new llama");
+        llama = newLlama;
+    }
+
+    function changeFee(uint256 _newFee) external {
+        require(msg.sender == llama, "not llama");
+        fee = _newFee;
     }
 
     function calcWithdrawId(
