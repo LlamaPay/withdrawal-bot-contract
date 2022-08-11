@@ -37,10 +37,9 @@ contract LlamaPayBot {
     event WithdrawScheduled(
         address owner,
         address llamaPay,
+        address token,
         address from,
         address to,
-        address token,
-        address redirectTo,
         uint216 amountPerSec,
         uint40 starts,
         uint40 frequency,
@@ -50,10 +49,9 @@ contract LlamaPayBot {
     event WithdrawCancelled(
         address owner,
         address llamaPay,
+        address token,
         address from,
         address to,
-        address token,
-        address redirectTo,
         uint216 amountPerSec,
         uint40 starts,
         uint40 frequency,
@@ -63,10 +61,9 @@ contract LlamaPayBot {
     event WithdrawExecuted(
         address owner,
         address llamaPay,
+        address token,
         address from,
         address to,
-        address token,
-        address redirectTo,
         uint216 amountPerSec,
         uint40 starts,
         uint40 frequency,
@@ -75,6 +72,7 @@ contract LlamaPayBot {
 
     mapping(address => uint256) public balances;
     mapping(bytes32 => address) public owners;
+    mapping(address => address) public redirects;
 
     function deposit() external payable {
         require(msg.sender != bot, "bot cannot deposit");
@@ -90,20 +88,18 @@ contract LlamaPayBot {
 
     function scheduleWithdraw(
         address _llamaPay,
+        address _token,
         address _from,
         address _to,
-        address _token,
-        address _redirectTo,
         uint216 _amountPerSec,
         uint40 _starts,
         uint40 _frequency
-    ) external {
-        bytes32 id = calcWithdrawId(
+    ) external returns (bytes32 id) {
+        id = calcWithdrawId(
             _llamaPay,
+            _token,
             _from,
             _to,
-            _token,
-            _redirectTo,
             _amountPerSec,
             _starts,
             _frequency
@@ -113,10 +109,9 @@ contract LlamaPayBot {
         emit WithdrawScheduled(
             msg.sender,
             _llamaPay,
+            _token,
             _from,
             _to,
-            _token,
-            _redirectTo,
             _amountPerSec,
             _starts,
             _frequency,
@@ -126,33 +121,30 @@ contract LlamaPayBot {
 
     function cancelWithdraw(
         address _llamaPay,
+        address _token,
         address _from,
         address _to,
-        address _token,
-        address _redirectTo,
         uint216 _amountPerSec,
         uint40 _starts,
         uint40 _frequency
-    ) external {
-        bytes32 id = calcWithdrawId(
+    ) external returns (bytes32 id) {
+        id = calcWithdrawId(
             _llamaPay,
+            _token,
             _from,
             _to,
-            _token,
-            _redirectTo,
             _amountPerSec,
             _starts,
             _frequency
         );
-        require(owners[id] == msg.sender, "not owner");
+        require(msg.sender == owners[id], "not owner");
         owners[id] = address(0);
         emit WithdrawCancelled(
             msg.sender,
             _llamaPay,
+            _token,
             _from,
             _to,
-            _token,
-            _redirectTo,
             _amountPerSec,
             _starts,
             _frequency,
@@ -160,13 +152,20 @@ contract LlamaPayBot {
         );
     }
 
+    function setRedirect(address _to) external {
+        redirects[msg.sender] = _to;
+    }
+
+    function cancelRedirect() external {
+        redirects[msg.sender] = address(0);
+    }
+
     function executeWithdraw(
         address _owner,
         address _llamaPay,
+        address _token,
         address _from,
         address _to,
-        address _token,
-        address _redirectTo,
         uint216 _amountPerSec,
         uint40 _starts,
         uint40 _frequency,
@@ -176,13 +175,13 @@ contract LlamaPayBot {
     ) external {
         require(msg.sender == bot, "not bot");
         if (_execute) {
-            if (_redirectTo != address(0)) {
+            if (redirects[_to] != address(0)) {
                 (uint256 withdrawableAmount, , ) = LlamaPay(_llamaPay)
                     .withdrawable(_from, _to, _amountPerSec);
                 LlamaPay(_llamaPay).withdraw(_from, _to, _amountPerSec);
                 ERC20(_token).safeTransferFrom(
                     _to,
-                    _redirectTo,
+                    redirects[_to],
                     withdrawableAmount
                 );
             } else {
@@ -193,10 +192,9 @@ contract LlamaPayBot {
             emit WithdrawExecuted(
                 _owner,
                 _llamaPay,
+                _token,
                 _from,
                 _to,
-                _token,
-                _redirectTo,
                 _amountPerSec,
                 _starts,
                 _frequency,
@@ -251,10 +249,9 @@ contract LlamaPayBot {
 
     function calcWithdrawId(
         address _llamaPay,
+        address _token,
         address _from,
         address _to,
-        address _token,
-        address _redirectTo,
         uint216 _amountPerSec,
         uint40 _starts,
         uint40 _frequency
@@ -263,10 +260,9 @@ contract LlamaPayBot {
             keccak256(
                 abi.encodePacked(
                     _llamaPay,
+                    _token,
                     _from,
                     _to,
-                    _token,
-                    _redirectTo,
                     _amountPerSec,
                     _starts,
                     _frequency
