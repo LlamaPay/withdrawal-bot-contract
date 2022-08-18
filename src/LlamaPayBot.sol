@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 
 import {ERC20} from "solmate/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
+import {LlamaPay} from "./fork/LlamaPay.sol";
 
 interface LlamaPay {
     function withdraw(
@@ -28,14 +29,9 @@ interface LlamaPay {
     function token() external view returns (address);
 }
 
-interface Factory {
-    function getLlamaPayContractByToken(address _token)
-        external
-        view
-        returns (address predictedAddress, bool isDeployed);
-}
-
 contract LlamaPayBot {
+    bytes32 constant INIT_CODEHASH = keccak256(type(LlamaPay).creationCode);
+
     using SafeTransferLib for ERC20;
 
     address public immutable factory;
@@ -179,9 +175,8 @@ contract LlamaPayBot {
     ) external {
         require(msg.sender == bot, "not bot");
         address token = LlamaPay(_llamaPay).token();
-        (address predictedAddress, ) = Factory(factory)
-            .getLlamaPayContractByToken(token);
-        require(_llamaPay == predictedAddress, "invalid llamapay contract");
+        (address predictedAddress, bool isDeployed ) = getLlamaPayContractByToken(token);
+        require(_llamaPay == predictedAddress && isDeployed, "invalid llamapay contract");
         if (_execute) {
             if (redirects[_to] != address(0)) {
                 (uint256 withdrawableAmount, , ) = LlamaPay(_llamaPay)
@@ -273,5 +268,27 @@ contract LlamaPayBot {
                     _frequency
                 )
             );
+    }
+
+    function getLlamaPayContractByToken(address _token)
+        external
+        view
+        returns (address predictedAddress, bool isDeployed)
+    {
+        predictedAddress = address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            bytes1(0xff),
+                            address(this),
+                            bytes32(uint256(uint160(_token))),
+                            INIT_CODEHASH
+                        )
+                    )
+                )
+            )
+        );
+        isDeployed = predictedAddress.code.length != 0;
     }
 }
