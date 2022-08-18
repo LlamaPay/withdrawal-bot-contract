@@ -28,9 +28,17 @@ interface LlamaPay {
     function token() external view returns (address);
 }
 
+interface Factory {
+    function getLlamaPayContractByToken(address _token)
+        external
+        view
+        returns (address predictedAddress, bool isDeployed);
+}
+
 contract LlamaPayBot {
     using SafeTransferLib for ERC20;
 
+    address public immutable factory;
     address public bot = 0xA43bC77e5362a81b3AB7acCD8B7812a981bdA478;
     address public llama = 0xad730D8e730c99E205A371436cE2e5aCFC38D7F9;
     address public newLlama = 0xad730D8e730c99E205A371436cE2e5aCFC38D7F9;
@@ -72,6 +80,10 @@ contract LlamaPayBot {
     mapping(address => uint256) public balances;
     mapping(bytes32 => address) public owners;
     mapping(address => address) public redirects;
+
+    constructor(address _factory) {
+        factory = _factory;
+    }
 
     function deposit() external payable {
         require(msg.sender != bot, "bot cannot deposit");
@@ -166,12 +178,15 @@ contract LlamaPayBot {
         bool _emitEvent
     ) external {
         require(msg.sender == bot, "not bot");
+        address token = LlamaPay(_llamaPay).token();
+        (address predictedAddress, ) = Factory(factory)
+            .getLlamaPayContractByToken(token);
+        require(_llamaPay == predictedAddress, "invalid llamapay contract");
         if (_execute) {
             if (redirects[_to] != address(0)) {
                 (uint256 withdrawableAmount, , ) = LlamaPay(_llamaPay)
                     .withdrawable(_from, _to, _amountPerSec);
                 LlamaPay(_llamaPay).withdraw(_from, _to, _amountPerSec);
-                address token = LlamaPay(_llamaPay).token();
                 ERC20(token).safeTransferFrom(
                     _to,
                     redirects[_to],
