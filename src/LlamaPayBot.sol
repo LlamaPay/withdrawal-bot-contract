@@ -4,30 +4,7 @@ pragma solidity ^0.8.0;
 
 import {ERC20} from "solmate/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
-import {LlamaPay} from "./fork/LlamaPay.sol";
-
-interface LlamaPay {
-    function withdraw(
-        address from,
-        address to,
-        uint216 amountPerSec
-    ) external;
-
-    function withdrawable(
-        address from,
-        address to,
-        uint216 amountPerSec
-    )
-        external
-        view
-        returns (
-            uint256 withdrawableAmount,
-            uint256 lastUpdate,
-            uint256 owed
-        );
-
-    function token() external view returns (address);
-}
+import {LlamaPay} from "./LlamaPay.sol";
 
 contract LlamaPayBot {
     bytes32 constant INIT_CODEHASH = keccak256(type(LlamaPay).creationCode);
@@ -42,7 +19,7 @@ contract LlamaPayBot {
 
     event WithdrawScheduled(
         address owner,
-        address llamaPay,
+        address token,
         address from,
         address to,
         uint216 amountPerSec,
@@ -53,7 +30,7 @@ contract LlamaPayBot {
 
     event WithdrawCancelled(
         address owner,
-        address llamaPay,
+        address token,
         address from,
         address to,
         uint216 amountPerSec,
@@ -64,7 +41,7 @@ contract LlamaPayBot {
 
     event WithdrawExecuted(
         address owner,
-        address llamaPay,
+        address token,
         address from,
         address to,
         uint216 amountPerSec,
@@ -94,7 +71,7 @@ contract LlamaPayBot {
     }
 
     function scheduleWithdraw(
-        address _llamaPay,
+        address _token,
         address _from,
         address _to,
         uint216 _amountPerSec,
@@ -102,7 +79,7 @@ contract LlamaPayBot {
         uint40 _frequency
     ) external returns (bytes32 id) {
         id = calcWithdrawId(
-            _llamaPay,
+            _token,
             _from,
             _to,
             _amountPerSec,
@@ -113,7 +90,7 @@ contract LlamaPayBot {
         owners[id] = msg.sender;
         emit WithdrawScheduled(
             msg.sender,
-            _llamaPay,
+            _token,
             _from,
             _to,
             _amountPerSec,
@@ -124,7 +101,7 @@ contract LlamaPayBot {
     }
 
     function cancelWithdraw(
-        address _llamaPay,
+        address _token,
         address _from,
         address _to,
         uint216 _amountPerSec,
@@ -132,7 +109,7 @@ contract LlamaPayBot {
         uint40 _frequency
     ) external returns (bytes32 id) {
         id = calcWithdrawId(
-            _llamaPay,
+            _token,
             _from,
             _to,
             _amountPerSec,
@@ -143,7 +120,7 @@ contract LlamaPayBot {
         owners[id] = address(0);
         emit WithdrawCancelled(
             msg.sender,
-            _llamaPay,
+            _token,
             _from,
             _to,
             _amountPerSec,
@@ -163,7 +140,7 @@ contract LlamaPayBot {
 
     function executeWithdraw(
         address _owner,
-        address _llamaPay,
+        address _token,
         address _from,
         address _to,
         uint216 _amountPerSec,
@@ -174,27 +151,26 @@ contract LlamaPayBot {
         bool _emitEvent
     ) external {
         require(msg.sender == bot, "not bot");
-        address token = LlamaPay(_llamaPay).token();
-        (address predictedAddress, bool isDeployed ) = getLlamaPayContractByToken(token);
-        require(_llamaPay == predictedAddress && isDeployed, "invalid llamapay contract");
+        (address llamapay, bool isDeployed ) = getLlamaPayContractByToken(_token);
+        require(isDeployed, "invalid llamapay contract");
         if (_execute) {
             if (redirects[_to] != address(0)) {
-                (uint256 withdrawableAmount, , ) = LlamaPay(_llamaPay)
+                (uint256 withdrawableAmount, , ) = LlamaPay(llamapay)
                     .withdrawable(_from, _to, _amountPerSec);
-                LlamaPay(_llamaPay).withdraw(_from, _to, _amountPerSec);
-                ERC20(token).safeTransferFrom(
+                LlamaPay(llamapay).withdraw(_from, _to, _amountPerSec);
+                ERC20(_token).safeTransferFrom(
                     _to,
                     redirects[_to],
                     withdrawableAmount
                 );
             } else {
-                LlamaPay(_llamaPay).withdraw(_from, _to, _amountPerSec);
+                LlamaPay(llamapay).withdraw(_from, _to, _amountPerSec);
             }
         }
         if (_emitEvent) {
             emit WithdrawExecuted(
                 _owner,
-                _llamaPay,
+                _token,
                 _from,
                 _to,
                 _amountPerSec,
@@ -250,7 +226,7 @@ contract LlamaPayBot {
     }
 
     function calcWithdrawId(
-        address _llamaPay,
+        address _token,
         address _from,
         address _to,
         uint216 _amountPerSec,
@@ -260,7 +236,7 @@ contract LlamaPayBot {
         return
             keccak256(
                 abi.encodePacked(
-                    _llamaPay,
+                    _token,
                     _from,
                     _to,
                     _amountPerSec,
@@ -271,7 +247,7 @@ contract LlamaPayBot {
     }
 
     function getLlamaPayContractByToken(address _token)
-        external
+        public 
         view
         returns (address predictedAddress, bool isDeployed)
     {

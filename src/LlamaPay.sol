@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {BoringBatchable} from "./BoringBatchable.sol";
+import {BoringBatchable} from "./fork/BoringBatchable.sol";
 
 interface Factory {
     function parameter() external view returns (address);
