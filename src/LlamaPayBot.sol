@@ -257,7 +257,7 @@ contract LlamaPayBot {
                     keccak256(
                         abi.encodePacked(
                             bytes1(0xff),
-                            address(this),
+                            factory,
                             bytes32(uint256(uint160(_token))),
                             INIT_CODEHASH
                         )
