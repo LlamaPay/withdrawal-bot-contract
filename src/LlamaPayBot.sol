@@ -4,17 +4,42 @@ pragma solidity ^0.8.0;
 
 import {ERC20} from "solmate/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
-import {LlamaPay} from "./LlamaPay.sol";
+
+interface LlamaPay {
+    function withdraw(
+        address from,
+        address to,
+        uint216 amountPerSec
+    ) external;
+
+    function withdrawable(
+        address from,
+        address to,
+        uint216 amountPerSec
+    )
+        external
+        view
+        returns (
+            uint256 withdrawableAmount,
+            uint256 lastUpdate,
+            uint256 owed
+        );
+}
+
+interface LlamaPayFactory {
+    function getLlamaPayContractByToken(address _token)
+        external
+        view
+        returns (address predictedAddress, bool isDeployed);
+}
 
 contract LlamaPayBot {
-    bytes32 constant INIT_CODEHASH = keccak256(type(LlamaPay).creationCode);
-
     using SafeTransferLib for ERC20;
 
     address public immutable factory;
-    address public bot = 0xA43bC77e5362a81b3AB7acCD8B7812a981bdA478;
-    address public llama = 0xad730D8e730c99E205A371436cE2e5aCFC38D7F9;
-    address public newLlama = 0xad730D8e730c99E205A371436cE2e5aCFC38D7F9;
+    address public bot;
+    address public llama;
+    address public newLlama = address(0);
     uint256 public fee = 50000; // Covers bot gas cost for calling function
 
     event WithdrawScheduled(
@@ -54,8 +79,14 @@ contract LlamaPayBot {
     mapping(bytes32 => address) public owners;
     mapping(address => address) public redirects;
 
-    constructor(address _factory) {
+    constructor(
+        address _factory,
+        address _bot,
+        address _llama
+    ) {
         factory = _factory;
+        bot = _bot;
+        llama = _llama;
     }
 
     function deposit() external payable {
@@ -151,7 +182,8 @@ contract LlamaPayBot {
         bool _emitEvent
     ) external {
         require(msg.sender == bot, "not bot");
-        (address llamapay, bool isDeployed ) = getLlamaPayContractByToken(_token);
+        (address llamapay, bool isDeployed) = LlamaPayFactory(factory)
+            .getLlamaPayContractByToken(_token);
         require(isDeployed, "invalid llamapay contract");
         if (_execute) {
             if (redirects[_to] != address(0)) {
@@ -244,27 +276,5 @@ contract LlamaPayBot {
                     _frequency
                 )
             );
-    }
-
-    function getLlamaPayContractByToken(address _token)
-        public 
-        view
-        returns (address predictedAddress, bool isDeployed)
-    {
-        predictedAddress = address(
-            uint160(
-                uint256(
-                    keccak256(
-                        abi.encodePacked(
-                            bytes1(0xff),
-                            factory,
-                            bytes32(uint256(uint160(_token))),
-                            INIT_CODEHASH
-                        )
-                    )
-                )
-            )
-        );
-        isDeployed = predictedAddress.code.length != 0;
     }
 }
