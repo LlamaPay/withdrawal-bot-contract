@@ -182,10 +182,10 @@ contract LlamaPayBot {
         bool _emitEvent
     ) external {
         require(msg.sender == bot, "not bot");
-        (address llamapay, bool isDeployed) = LlamaPayFactory(factory)
-            .getLlamaPayContractByToken(_token);
-        require(isDeployed, "invalid llamapay contract");
         if (_execute) {
+            (address llamapay, bool isDeployed) = LlamaPayFactory(factory)
+                .getLlamaPayContractByToken(_token);
+            require(isDeployed, "invalid llamapay contract");
             if (redirects[_to] != address(0)) {
                 (uint256 withdrawableAmount, , ) = LlamaPay(llamapay)
                     .withdrawable(_from, _to, _amountPerSec);
