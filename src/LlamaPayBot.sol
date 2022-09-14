@@ -3,6 +3,7 @@
 pragma solidity ^0.8.0;
 
 import {ERC20} from "solmate/tokens/ERC20.sol";
+import {ERC4626} from "solmate/mixins/ERC4626.sol";
 import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 
 interface LlamaPay {
@@ -75,9 +76,14 @@ contract LlamaPayBot {
         bytes32 id
     );
 
+    struct Redirect {
+        bool is4626Vault;
+        address to;
+    }
+
     mapping(address => uint256) public balances;
     mapping(bytes32 => address) public owners;
-    mapping(address => address) public redirects;
+    mapping(address => Redirect) public redirects;
 
     constructor(
         address _factory,
@@ -162,11 +168,24 @@ contract LlamaPayBot {
     }
 
     function setRedirect(address _to) external {
-        redirects[msg.sender] = _to;
+        redirects[msg.sender] = Redirect({
+            is4626Vault: false,
+            to: _to
+        });
+    }
+
+    function setRedirect(address _to, bool _is4626Vault) external {
+        redirects[msg.sender] = Redirect({
+            is4626Vault: _is4626Vault,
+            to: _to
+        });
     }
 
     function cancelRedirect() external {
-        redirects[msg.sender] = address(0);
+        redirects[msg.sender] = Redirect({
+            is4626Vault: false,
+            to: address(0)
+        });
     }
 
     function executeWithdraw(
@@ -183,18 +202,34 @@ contract LlamaPayBot {
     ) external {
         require(msg.sender == bot, "not bot");
         if (_execute) {
-            (address llamapay, bool isDeployed) = LlamaPayFactory(factory)
+            address llamapay;
+            { // scope to avoids stack too deep errors
+            (address _llamapay, bool isDeployed) = LlamaPayFactory(factory)
                 .getLlamaPayContractByToken(_token);
+            llamapay = _llamapay;
             require(isDeployed, "invalid llamapay contract");
-            if (redirects[_to] != address(0)) {
+            }
+
+            Redirect memory redirect = redirects[_to];
+            if (redirect.to != address(0)) {
                 (uint256 withdrawableAmount, , ) = LlamaPay(llamapay)
                     .withdrawable(_from, _to, _amountPerSec);
                 LlamaPay(llamapay).withdraw(_from, _to, _amountPerSec);
-                ERC20(_token).safeTransferFrom(
-                    _to,
-                    redirects[_to],
-                    withdrawableAmount
-                );
+                if (redirect.is4626Vault) {
+                    ERC20(_token).safeTransferFrom(
+                        _to,
+                        address(this),
+                        withdrawableAmount
+                    );
+                    ERC20(_token).approve(redirect.to, withdrawableAmount);
+                    ERC4626(redirect.to).deposit(withdrawableAmount, _to);
+                } else {
+                    ERC20(_token).safeTransferFrom(
+                        _to,
+                        redirect.to,
+                        withdrawableAmount
+                    );
+                }
             } else {
                 LlamaPay(llamapay).withdraw(_from, _to, _amountPerSec);
             }
